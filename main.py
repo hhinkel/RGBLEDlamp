@@ -1,68 +1,87 @@
-from machine import Pin
-import time
+import machine
+import sys
+import network
+import utime
+import ntptime
+import uasyncio
 import neopixel
 
-pin = 27
-num = 144
+#User constants
+SSID = 'Liad'
+PW = 'Cimmie.Sabrina.Lago'
+TIME_ZONE = -5   #hours from GMT. This is EST
+WAKEUP_TUPLE = (20, 40)  #time lights come on in 24hr format, hour and minute
+PIN = 27
+NUM_NEOPIXELS = 144
 
-#Create noepixel object
-#For ESP32
-strip = neopixel.NeoPixel(Pin(pin), num)
-#For ESP8266
-#strip = neopixel.NeoPixel(machine.Pin(pin), num)
+def connectToWifi():
+    wifi = network.WLAN(network.STA_IF)
+    wifi.active(True)
+    wifi.connect(SSID,PW)
+    while not wifi.isconnected():
+        pass
+    return wifi
 
-#RGB values commented by the approximate Temp in Kelvin
-temp = (255, 249, 253)
-#kelvin_list = (
-#    (255, 228, 206), #5000
-#    (255, 230, 210), #5100
-#    (255, 232, 213), #5200
-#    (255, 233, 217), #5300
-#    (255, 235, 220), #5400
-#    (255, 236, 224), #5500
-#    (255, 238, 227), #5600
-#    (255, 239, 230), #5700
-#    (255, 240, 233), #5800
-#    (255, 242, 236), #5900
-#    (255, 243, 239), #6000
-#    (255, 244, 242), #6100
-#    (255, 245, 245), #6200
-#    (255, 246, 247), #6300
-#    (255, 248, 251), #6400
-#    (255, 249, 253)) #6500
+def disconnectFromWifi(wifi):
+    wifi.disconnect()
+    wifi.active(False)
 
-def clear():
+def getZoneTime():
+    return (utime.localtime(utime.time() + TIME_ZONE * 3600))
+
+def determineWakeupTime():
+    return getZoneTime()[0:3] + WAKEUP_TUPLE + getZoneTime()[5:]
+
+def updateRTCFromNTP():
+    wifi = connectToWifi()
+    print("GMT time before synchronization：%s" %str(utime.localtime()))
+    try:
+        ntptime.settime()
+    except OSError:
+        print("Can not connect to NTP server")
+        machine.reset()
+    localZoneTime = getZoneTime() 
+    print("GMT time after synchronization：%s" %str(utime.localtime()))
+    print("Local time after synchronization：%s" %str(localZoneTime))
+    disconnectFromWifi(wifi)
+
+def startLightSequence():
+    strip = createNeoPixelObject()
+    setStrip(strip,(0, 0, 255))
+    utime.sleep(1)
+    clearStrip(strip)
+
+def createNeoPixelObject():
+    return neopixel.NeoPixel(machine.Pin(PIN), NUM_NEOPIXELS)
+
+def clearStrip(strip):
     strip.fill((0, 0, 0))
     strip.write()
     
-def setColor(temp):
+def setStrip(strip,temp):
     strip.fill(temp)
     strip.write()
 
-def fade(startColor, endColor, steps, interval):
-    lastUpdate = time.time() - interval
+def main():
+    #This is setup
+    updateRTCFromNTP()
+    alarm = determineWakeupTime()
+    print(alarm)
     
-    for i in range(0, steps):
-        red = ((startColor[0] * (steps - i)) + (endColor[0] * i)) // steps
-        green = ((startColor[1] * (steps - i)) + (endColor[1] * i)) // steps
-        blue = ((startColor[2] * (steps - i)) + (endColor[2] * i)) // steps
-        
-        while ((time.time() - lastUpdate) < interval):
-            pass
-        
-        color = (red, green, blue)
-        setColor(color)
-        
-        lastUpdate = time.time()
-            
-
-clear()
-lastUpdate = time.time() - 30
-fade((0,0,0), temp, 60, 0.02)
-while ((time.time() - lastUpdate) < 30):
-    pass
-fade(temp, (0,0,0), 60, 0.02)
-clear()
-lastUpdate = time.time()
+    #this is the loop
+    while True:
+        hourMin = getZoneTime()[3:5]
+        print(hourMin)
+        #If local midnight reset local time and the alarm tuple
+        if hourMin == (0, 0):
+            updateRTCFromNTP()
+            date = getZoneTime()[0:4]
+            alarm = determineWakeupTime()
+            print(alarm)
+        if hourMin == WAKEUP_TUPLE:
+            #async?
+            startLightSequence()
+        utime.sleep(30)
     
-    
+if __name__ == '__main__':
+    main()
