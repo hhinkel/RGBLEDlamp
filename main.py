@@ -7,8 +7,8 @@ import uasyncio
 import neopixel
 
 #User constants
-SSID = 'Liad'
-PW = 'Cimmie.Sabrina.Lago'
+SSID = 'SSID'
+PW = 'Password'
 TIME_ZONE = -5   #hours from GMT. This is EST
 WAKEUP_TUPLE = (20, 40)  #time lights come on in 24hr format, hour and minute
 PIN = 27
