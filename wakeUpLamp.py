@@ -20,7 +20,7 @@ import sys
 import network
 import utime
 import ntptime
-import uasyncio
+#import uasyncio
 import neopixel
 
 #User constants
@@ -28,14 +28,16 @@ SSID = 'SSID'
 PW = 'password'
 TIME_ZONE = -4   #hours from GMT. This is EDT (-5 is EST)
 SEC_IN_HOUR = 3600 #Seconds in an hour
-LIT_LENGTH = 2 #Hours at brightest setting 
-WAKEUP_TUPLE = (4, 45)  #time lights come on in 24hr format, hour and minute
+LIT_LENGTH = 120 #Minutes at brightest setting 
+WAKEUP_TUPLE = (05, 00)  #time lights come on in 24hr format, hour and minute
 PIN = 27 #Pin that connects the lights to the microcontroller
-NUM_NEOPIXELS = 50 #Number of neopixels to turn on in the strip
+NUM_NEOPIXELS = 60 #Number of neopixels to turn on in the strip
 LED_COLOR_FULL = (255, 255, 255) #RGB values for LEDs when fully on
 LED_COLOR_RED = (100, 0, 0) #RGB values for LEDs red only for error signaling
 LED_COLOR_BLUE = (0, 0, 100)
 LED_COLOR_OFF = (0, 0, 0) #RGB values for LEDs when off
+STEPS = 60 #Number of steps that the LEDs use to fade up and down
+FADE_TIME = 30 #How long in minutes that you want the fade up and down to take
 
 #RGB values commented by the approximate Temp in Kelvin
 #From this web site https://andi-siess.de/rgb-to-color-temperature/
@@ -57,7 +59,7 @@ LED_COLOR_OFF = (0, 0, 0) #RGB values for LEDs when off
 #    (255, 248, 251), #6400
 #    (255, 249, 253)) #6500
 
-async def setup(strip):
+def setup(strip):
     """ Test the LEDs, set the clock for the first time and get the wake up time.
     Arguments:
         strip - neopixel object
@@ -67,7 +69,7 @@ async def setup(strip):
         Nothing """
     for i in range(0, 3):
         ledFlash(strip, LED_COLOR_FULL)
-    updateRTCFromNTP(strip)
+    updateRTCFromNTP(strip, True)
 
 def ledFlash(strip, color, t = 1):
     """ Bring neopixel strip to full and then clear it
@@ -106,7 +108,7 @@ def setStrip(strip,temp):
     strip.fill(temp)
     strip.write()
 
-def updateRTCFromNTP(strip):
+def updateRTCFromNTP(strip, start = False):
     """ Update the microcontrollers real time clock (RTC) from
         network time protocol (NTP) servers. The RTC of the ESP8266 is notoriously inaccurate.
         https://docs.micropython.org/en/latest/esp8266/general.html#real-time-clock
@@ -117,7 +119,7 @@ def updateRTCFromNTP(strip):
         localTime - as a time tuple (see setup)
     Returns:
         Nothing """
-    wifi = connectToWifi(strip)
+    wifi = connectToWifi(strip, start)
     try:
         ntptime.settime()
     except OSError:
@@ -129,7 +131,7 @@ def updateRTCFromNTP(strip):
     print("Local time after synchronization：%s" %str(localTime))
     disconnectFromWifi(wifi)
 
-def connectToWifi(strip):
+def connectToWifi(strip, start):
     """ Setup the wifi object and connect to the network defined above
     Arguments:
         strip - neopixel object
@@ -141,7 +143,9 @@ def connectToWifi(strip):
     wifi.active(True)
     wifi.connect(SSID,PW)
     while not wifi.isconnected():
-        ledFlash(strip, LED_COLOR_BLUE, 0.5)
+        # only flash the wifi connection wait signal if starting
+        if start:
+            ledFlash(strip, LED_COLOR_BLUE, 0.5)
         pass
     return wifi
 
@@ -176,41 +180,72 @@ def createNeoPixelObject():
         Neopixel object """
     return neopixel.NeoPixel(machine.Pin(PIN), NUM_NEOPIXELS)
 
-async def clock(strip):
+def clock(strip):
     """ processing loop. Loop continuosly. Keep track of the time, when the wakeup
         time comes around set off the lights. Every 6 hours query the time NTP server
         and update the microcontrollers clock.
     Arguments:
         strip - neopixel object
     Local Variables:
+        times - list of two tuples, Start fade up (hour, min) and Start fade down (hour, min)
+        fadeInterval - number of seconds be between each fade step
         hourMin - the current hour and minute
     Returns:
         Nothing """
+    times = determineTimes()
+    fadeInterval = (FADE_TIME * 60) /STEPS
     while True:
-        #Keep track of the time.
         hourMin = getLocalTime()[3:5]
-        #when we hit the wakeup time setup and run the lights task
-        if hourMin == WAKEUP_TUPLE:
-            await lights(strip)
-        #Every 6 hours query the time server and reconcile the NTP time with the
-        # ESP32 Real Time Clock
+        if hourMin == times[0]:
+            lightsOn(strip, fadeInterval)
+        if hourMin == times[1]:        
+            lightsOff(strip, fadeInterval)
         if hourMin == (0, 0) or hourMin == (6, 0) or hourMin == (12, 0) or hourMin == (18, 0):
             updateRTCFromNTP(strip)
-    
-async def lights(strip):
+        utime.sleep(30)            
+
+def determineTimes():
+    """ Determine the times needed for the processing loop
+    Arguments:
+        None
+    Local Variables:
+        tm = local time
+        startFadeUpTime = time to start the lights fading up
+        startFadeDownTime = time the lights start fading down from full brightness
+    Returns:
+        list of two tuples, Start fade up (hour, min) and Start fade down (hour, min) """
+    tm = getLocalTime()
+    startFadeUpTime = utime.localtime(utime.mktime((tm[0], tm[1], tm[2], WAKEUP_TUPLE[0],
+                               WAKEUP_TUPLE[1] - FADE_TIME, tm[5], tm[6], tm[7])))
+    startFadeDownTime = utime.localtime(utime.mktime((tm[0], tm[1], tm[2], WAKEUP_TUPLE[0],
+                               WAKEUP_TUPLE[1] + LIT_LENGTH, tm[5], tm[6], tm[7])))
+    return [startFadeUpTime[3:5], startFadeDownTime[3:5]]
+
+def lightsOn(strip, interval):
     """ Fade up the lights, wait at full brightness, then fade down
     Arguments:
         strip - neopixel object
+        interval - time beteween brightness steps during fade up and fade down
     Local Variables:
         None
     Returns:
         Nothing """
     clearStrip(strip)
-    fade(LED_COLOR_OFF, LED_COLOR_FULL, 60, 0.02, strip)
-    utime.sleep(LIT_LENGTH * SEC_IN_HOUR)
-    fade(LED_COLOR_FULL, LED_COLOR_OFF, 60, 0.02, strip)
-    clearStrip(strip)
+    print("lightsOn", strip, interval)
+    fade(LED_COLOR_OFF, LED_COLOR_FULL, STEPS, interval, strip)
     
+def lightsOff(strip, interval):
+    """ Fade up the lights, wait at full brightness, then fade down
+    Arguments:
+        strip - neopixel object
+        interval - time beteween brightness steps during fade up and fade down
+    Local Variables:
+        None
+    Returns:
+        Nothing """
+    fade(LED_COLOR_FULL, LED_COLOR_OFF, STEPS, interval, strip)
+    clearStrip(strip)
+   
 def fade(startColor, endColor, steps, interval, strip):
     """ Fade up the lights, wait at full brightness, then fade down
     Arguments:
@@ -229,6 +264,7 @@ def fade(startColor, endColor, steps, interval, strip):
         Nothing """
     lastUpdate = utime.time() - interval
     for i in range(0, steps):
+        print("range step: ", steps)
         red = ((startColor[0] * (steps - i)) + (endColor[0] * i)) // steps
         green = ((startColor[1] * (steps - i)) + (endColor[1] * i)) // steps
         blue = ((startColor[2] * (steps - i)) + (endColor[2] * i)) // steps
@@ -247,8 +283,8 @@ def main():
     Returns:
         Nothing """
     LEDStrip = createNeoPixelObject()
-    uasyncio.run(setup(LEDStrip))
-    uasyncio.run(clock(LEDStrip))
+    setup(LEDStrip)
+    clock(LEDStrip)
     
 if __name__ == '__main__':
     main()
