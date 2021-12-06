@@ -26,15 +26,15 @@ import neopixel
 #User constants
 SSID = 'SSID'
 PW = 'password'
-TIME_ZONE = -4   #hours from GMT. This is EDT (-5 is EST)
+TIME_ZONE = -5   #hours from GMT. This is EST (-5 is EDT)
 SEC_IN_HOUR = 3600 #Seconds in an hour
 LIT_LENGTH = 120 #Minutes at brightest setting 
 WAKEUP_TUPLE = (05, 00)  #time lights come on in 24hr format, hour and minute
 PIN = 27 #Pin that connects the lights to the microcontroller
 NUM_NEOPIXELS = 60 #Number of neopixels to turn on in the strip
 LED_COLOR_FULL = (255, 255, 255) #RGB values for LEDs when fully on
-LED_COLOR_RED = (100, 0, 0) #RGB values for LEDs red only for error signaling
-LED_COLOR_BLUE = (0, 0, 100)
+LED_COLOR_RED = (100, 0, 0) #RGB values for LEDs red: only for error signaling
+LED_COLOR_BLUE = (0, 0, 100) #RGB values for blue
 LED_COLOR_OFF = (0, 0, 0) #RGB values for LEDs when off
 STEPS = 60 #Number of steps that the LEDs use to fade up and down
 FADE_TIME = 30 #How long in minutes that you want the fade up and down to take
