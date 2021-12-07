@@ -20,7 +20,6 @@ import sys
 import network
 import utime
 import ntptime
-#import uasyncio
 import neopixel
 
 #User constants
@@ -30,8 +29,8 @@ TIME_ZONE = -5   #hours from GMT. This is EST (-5 is EDT)
 SEC_IN_HOUR = 3600 #Seconds in an hour
 LIT_LENGTH = 120 #Minutes at brightest setting 
 WAKEUP_TUPLE = (05, 00)  #time lights come on in 24hr format, hour and minute
-PIN = 27 #Pin that connects the lights to the microcontroller
-NUM_NEOPIXELS = 60 #Number of neopixels to turn on in the strip
+PIN = 26 #Pin that connects the lights to the microcontroller
+NUM_NEOPIXELS = 50 #Number of neopixels to turn on in the strip
 LED_COLOR_FULL = (255, 255, 255) #RGB values for LEDs when fully on
 LED_COLOR_RED = (100, 0, 0) #RGB values for LEDs red: only for error signaling
 LED_COLOR_BLUE = (0, 0, 100) #RGB values for blue
@@ -70,8 +69,8 @@ def setup(strip):
     for i in range(0, 3):
         ledFlash(strip, LED_COLOR_FULL)
     updateRTCFromNTP(strip, True)
-
-def ledFlash(strip, color, t = 1):
+    
+def ledFlash(strip, color, t = 1.0):
     """ Bring neopixel strip to full and then clear it
     Arguments:
         strip - neopixel object
@@ -121,6 +120,7 @@ def updateRTCFromNTP(strip, start = False):
         Nothing """
     wifi = connectToWifi(strip, start)
     try:
+        # default host is "pool.ntp.org" see https://tf.nist.gov/tf-cgi/servers.cgi for more servers.
         ntptime.settime()
     except OSError:
         for i in range(0, 3):
@@ -128,7 +128,6 @@ def updateRTCFromNTP(strip, start = False):
         print("Can not connect to NTP server")
         machine.reset()
     localTime = getLocalTime() 
-    print("Local time after synchronization：%s" %str(localTime))
     disconnectFromWifi(wifi)
 
 def connectToWifi(strip, start):
@@ -231,7 +230,6 @@ def lightsOn(strip, interval):
     Returns:
         Nothing """
     clearStrip(strip)
-    print("lightsOn", strip, interval)
     fade(LED_COLOR_OFF, LED_COLOR_FULL, STEPS, interval, strip)
     
 def lightsOff(strip, interval):
